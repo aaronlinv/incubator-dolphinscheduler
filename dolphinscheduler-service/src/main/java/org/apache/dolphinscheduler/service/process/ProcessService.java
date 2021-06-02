@@ -394,7 +394,7 @@ public class ProcessService {
                 if (StringUtils.isEmpty(taskInstance.getHost())) {
                     continue;
                 }
-                int port = Constants.RPC_PORT;
+                int port = 1234;
                 String ip = "";
                 try {
                     ip = Host.of(taskInstance.getHost()).getIp();

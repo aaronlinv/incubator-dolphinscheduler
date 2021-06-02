@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 /**
  *  logger server
  */
+
 public class LoggerServer {
 
     private static  final Logger logger = LoggerFactory.getLogger(LoggerServer.class);
@@ -35,27 +36,27 @@ public class LoggerServer {
     /**
      *  netty server
      */
-    private final NettyRemotingServer server;
+//    private final NettyRemotingServer server;
 
     /**
      *  netty server config
      */
-    private final NettyServerConfig serverConfig;
+//    private final NettyServerConfig serverConfig;
 
     /**
      *  loggger request processor
      */
-    private final LoggerRequestProcessor requestProcessor;
+//    private final LoggerRequestProcessor requestProcessor;
 
     public LoggerServer(){
-        this.serverConfig = new NettyServerConfig();
-        this.serverConfig.setListenPort(Constants.RPC_PORT);
-        this.server = new NettyRemotingServer(serverConfig);
-        this.requestProcessor = new LoggerRequestProcessor();
-        this.server.registerProcessor(CommandType.GET_LOG_BYTES_REQUEST, requestProcessor, requestProcessor.getExecutor());
-        this.server.registerProcessor(CommandType.ROLL_VIEW_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
-        this.server.registerProcessor(CommandType.VIEW_WHOLE_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
-        this.server.registerProcessor(CommandType.REMOVE_TAK_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
+//        this.serverConfig = new NettyServerConfig();
+//        this.serverConfig.setListenPort(Constants.RPC_PORT);
+//        this.server = new NettyRemotingServer(serverConfig);
+//        this.requestProcessor = new LoggerRequestProcessor();
+//        this.server.registerProcessor(CommandType.GET_LOG_BYTES_REQUEST, requestProcessor, requestProcessor.getExecutor());
+//        this.server.registerProcessor(CommandType.ROLL_VIEW_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
+//        this.server.registerProcessor(CommandType.VIEW_WHOLE_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
+//        this.server.registerProcessor(CommandType.REMOVE_TAK_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
     }
 
     /**
@@ -71,8 +72,8 @@ public class LoggerServer {
      * server start
      */
     public void start()  {
-        this.server.start();
-        logger.info("logger server started, listening on port : {}" , Constants.RPC_PORT);
+//        this.server.start();
+//        logger.info("logger server started, listening on port : {}" , Constants.RPC_PORT);
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {
@@ -85,7 +86,7 @@ public class LoggerServer {
      * stop
      */
     public void stop() {
-        this.server.close();
+//        this.server.close();
         logger.info("logger server shut down");
     }
 

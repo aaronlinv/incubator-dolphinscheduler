@@ -176,7 +176,7 @@ public class TaskKillProcessor implements NettyRequestProcessor {
     private Pair<Boolean, List<String>> killYarnJob(String host, String logPath, String executePath, String tenantCode) {
         try (LogClientService logClient = new LogClientService();) {
             logger.info("view log host : {},logPath : {}", host, logPath);
-            String log = logClient.viewLog(host, Constants.RPC_PORT, logPath);
+            String log = logClient.viewLog(host, 1234, logPath);
             List<String> appIds = Collections.emptyList();
             if (StringUtils.isNotEmpty(log)) {
                 appIds = LoggerUtils.getAppIds(log, logger);

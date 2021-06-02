@@ -93,7 +93,7 @@ public class LoggerServiceImpl implements LoggerService {
         Result<String> result = new Result<>(Status.SUCCESS.getCode(), Status.SUCCESS.getMsg());
 
         logger.info("log host : {} , logPath : {} , logServer port : {}", host, taskInstance.getLogPath(),
-                Constants.RPC_PORT);
+                1234);
 
         StringBuilder log = new StringBuilder();
         if (skipLineNum == 0) {
@@ -105,7 +105,7 @@ public class LoggerServiceImpl implements LoggerService {
         }
 
         log.append(logClient
-                .rollViewLog(host, Constants.RPC_PORT, taskInstance.getLogPath(), skipLineNum, limit));
+                .rollViewLog(host, 1234, taskInstance.getLogPath(), skipLineNum, limit));
 
         result.setData(log.toString());
         return result;
@@ -130,7 +130,7 @@ public class LoggerServiceImpl implements LoggerService {
                 host,
                 Constants.SYSTEM_LINE_SEPARATOR).getBytes(StandardCharsets.UTF_8);
         return ArrayUtils.addAll(head,
-                logClient.getLogBytes(host, Constants.RPC_PORT, taskInstance.getLogPath()));
+                logClient.getLogBytes(host, 1234, taskInstance.getLogPath()));
     }
 
     /**
