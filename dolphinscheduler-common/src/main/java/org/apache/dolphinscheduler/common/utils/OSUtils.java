@@ -98,7 +98,8 @@ public class OSUtils {
      */
     public static double availablePhysicalMemorySize() {
         GlobalMemory memory = hal.getMemory();
-        double availablePhysicalMemorySize = memory.getAvailable() / 1024.0 / 1024 / 1024;
+//        double availablePhysicalMemorySize = memory.getAvailable() / 1024.0 / 1024 / 1024;
+        double availablePhysicalMemorySize = 1;
 
         DecimalFormat df = new DecimalFormat(TWO_DECIMAL);
         df.setRoundingMode(RoundingMode.HALF_UP);
@@ -133,7 +134,9 @@ public class OSUtils {
             loadAverage = osBean.getSystemLoadAverage();
         } catch (Exception e) {
             logger.error("get operation system load average exception, try another method ", e);
-            loadAverage = hal.getProcessor().getSystemLoadAverage();
+
+//            loadAverage = hal.getProcessor().getSystemLoadAverage();
+            loadAverage = hal.getProcessor().getSystemLoadAverage(1)[0];
             if (Double.isNaN(loadAverage)) {
                 return NEGATIVE_ONE;
             }
@@ -150,7 +153,10 @@ public class OSUtils {
      */
     public static double cpuUsage() {
         CentralProcessor processor = hal.getProcessor();
-        double cpuUsage = processor.getSystemCpuLoad();
+
+//        double cpuUsage = processor.getSystemCpuLoad();
+        double cpuUsage = processor.getSystemLoadAverage(1)[0];
+
         if (Double.isNaN(cpuUsage)) {
             return NEGATIVE_ONE;
         }
