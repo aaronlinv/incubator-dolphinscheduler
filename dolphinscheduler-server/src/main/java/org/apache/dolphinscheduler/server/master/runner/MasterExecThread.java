@@ -22,7 +22,6 @@ import static org.apache.dolphinscheduler.common.Constants.CMDPARAM_COMPLEMENT_D
 import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_RECOVERY_START_NODE_STRING;
 import static org.apache.dolphinscheduler.common.Constants.CMD_PARAM_START_NODE_NAMES;
 import static org.apache.dolphinscheduler.common.Constants.DEFAULT_WORKER_GROUP;
-import static org.apache.dolphinscheduler.common.Constants.LOCAL_PARAMS;
 import static org.apache.dolphinscheduler.common.Constants.SEC_2_MINUTES_TIME_UNIT;
 
 import org.apache.dolphinscheduler.common.Constants;
@@ -47,7 +46,6 @@ import org.apache.dolphinscheduler.common.utils.JSONUtils;
 import org.apache.dolphinscheduler.common.utils.OSUtils;
 import org.apache.dolphinscheduler.common.utils.ParameterUtils;
 import org.apache.dolphinscheduler.common.utils.StringUtils;
-import org.apache.dolphinscheduler.common.utils.VarPoolUtils;
 import org.apache.dolphinscheduler.dao.entity.ProcessInstance;
 import org.apache.dolphinscheduler.dao.entity.ProjectUser;
 import org.apache.dolphinscheduler.dao.entity.Schedule;
@@ -55,16 +53,16 @@ import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.dao.utils.DagHelper;
 import org.apache.dolphinscheduler.remote.NettyRemotingClient;
 import org.apache.dolphinscheduler.server.master.config.MasterConfig;
-import org.apache.dolphinscheduler.server.utils.AlertManager;
+import org.apache.dolphinscheduler.service.alert.ProcessAlertManager;
 import org.apache.dolphinscheduler.service.process.ProcessService;
 import org.apache.dolphinscheduler.service.quartz.cron.CronUtils;
 import org.apache.dolphinscheduler.service.queue.PeerTaskInstancePriorityQueue;
 
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -147,7 +145,7 @@ public class MasterExecThread implements Runnable {
     /**
      * alert manager
      */
-    private AlertManager alertManager;
+    private ProcessAlertManager processAlertManager;
 
     /**
      * the object of DAG
@@ -173,19 +171,19 @@ public class MasterExecThread implements Runnable {
      *
      * @param parentNodeName parent node name
      */
-    private Map<String, Object> propToValue = new ConcurrentHashMap<String, Object>();
+    private Map<String, Object> propToValue = new ConcurrentHashMap<>();
 
     /**
      * constructor of MasterExecThread
      *
-     * @param processInstance     processInstance
-     * @param processService      processService
+     * @param processInstance processInstance
+     * @param processService processService
      * @param nettyRemotingClient nettyRemotingClient
      */
     public MasterExecThread(ProcessInstance processInstance
             , ProcessService processService
             , NettyRemotingClient nettyRemotingClient
-            , AlertManager alertManager
+            , ProcessAlertManager processAlertManager
             , MasterConfig masterConfig) {
         this.processService = processService;
 
@@ -195,7 +193,7 @@ public class MasterExecThread implements Runnable {
         this.taskExecService = ThreadUtils.newDaemonFixedThreadExecutor("Master-Task-Exec-Thread",
                 masterTaskExecNum);
         this.nettyRemotingClient = nettyRemotingClient;
-        this.alertManager = alertManager;
+        this.processAlertManager = processAlertManager;
     }
 
     @Override
@@ -257,7 +255,7 @@ public class MasterExecThread implements Runnable {
         processService.saveProcessInstance(processInstance);
 
         // get schedules
-        int processDefinitionId = processInstance.getProcessDefinitionId();
+        int processDefinitionId = processInstance.getProcessDefinition().getId();
         List<Schedule> schedules = processService.queryReleaseSchedulerListByProcessDefinitionId(processDefinitionId);
         List<Date> listDate = Lists.newLinkedList();
         if (!CollectionUtils.isEmpty(schedules)) {
@@ -267,7 +265,7 @@ public class MasterExecThread implements Runnable {
         }
         // get first fire date
         Iterator<Date> iterator = null;
-        Date scheduleDate = null;
+        Date scheduleDate;
         if (!CollectionUtils.isEmpty(listDate)) {
             iterator = listDate.iterator();
             scheduleDate = iterator.next();
@@ -281,9 +279,7 @@ public class MasterExecThread implements Runnable {
         }
 
         while (Stopper.isRunning()) {
-
-            logger.info("process {} start to complement {} data",
-                    processInstance.getId(), DateUtils.dateToString(scheduleDate));
+            logger.info("process {} start to complement {} data", processInstance.getId(), DateUtils.dateToString(scheduleDate));
             // prepare dag and other info
             prepareProcess();
 
@@ -301,8 +297,7 @@ public class MasterExecThread implements Runnable {
             endProcess();
             // process instance failure ，no more complements
             if (!processInstance.getState().typeIsSuccess()) {
-                logger.info("process {} state {}, complement not completely!",
-                        processInstance.getId(), processInstance.getState());
+                logger.info("process {} state {}, complement not completely!", processInstance.getId(), processInstance.getState());
                 break;
             }
             //  current process instance success ,next execute
@@ -369,7 +364,7 @@ public class MasterExecThread implements Runnable {
         }
         List<TaskInstance> taskInstances = processService.findValidTaskListByProcessId(processInstance.getId());
         ProjectUser projectUser = processService.queryProjectWithUserByProcessInstanceId(processInstance.getId());
-        alertManager.sendAlertProcessInstance(processInstance, taskInstances, projectUser);
+        processAlertManager.sendAlertProcessInstance(processInstance, taskInstances, projectUser);
     }
 
     /**
@@ -379,12 +374,18 @@ public class MasterExecThread implements Runnable {
      */
     private void buildFlowDag() throws Exception {
         recoverNodeIdList = getStartTaskInstanceList(processInstance.getCommandParam());
-
-        forbiddenTaskList = DagHelper.getForbiddenTaskNodeMaps(processInstance.getProcessInstanceJson());
+        List<TaskNode> taskNodeList =
+                processService.genTaskNodeList(processInstance.getProcessDefinitionCode(), processInstance.getProcessDefinitionVersion(), new HashMap<>());
+        forbiddenTaskList.clear();
+        taskNodeList.forEach(taskNode -> {
+            if (taskNode.isForbidden()) {
+                forbiddenTaskList.put(taskNode.getName(), taskNode);
+            }
+        });
         // generate process to get DAG info
         List<String> recoveryNameList = getRecoveryNodeNameList();
         List<String> startNodeNameList = parseStartNodeName(processInstance.getCommandParam());
-        ProcessDag processDag = generateFlowDag(processInstance.getProcessInstanceJson(),
+        ProcessDag processDag = generateFlowDag(taskNodeList,
                 startNodeNameList, recoveryNameList, processInstance.getTaskDependType());
         if (processDag == null) {
             logger.error("processDag is null");
@@ -444,13 +445,14 @@ public class MasterExecThread implements Runnable {
      * find task instance in db.
      * in case submit more than one same name task in the same time.
      *
-     * @param taskName task name
+     * @param taskCode task code
+     * @param taskVersion task version
      * @return TaskInstance
      */
-    private TaskInstance findTaskIfExists(String taskName) {
+    private TaskInstance findTaskIfExists(Long taskCode, int taskVersion) {
         List<TaskInstance> taskInstanceList = processService.findValidTaskListByProcessId(this.processInstance.getId());
         for (TaskInstance taskInstance : taskInstanceList) {
-            if (taskInstance.getName().equals(taskName)) {
+            if (taskInstance.getTaskCode() == taskCode && taskInstance.getTaskDefinitionVersion() == taskVersion) {
                 return taskInstance;
             }
         }
@@ -461,28 +463,23 @@ public class MasterExecThread implements Runnable {
      * encapsulation task
      *
      * @param processInstance process instance
-     * @param nodeName        node name
+     * @param taskNode taskNode
      * @return TaskInstance
      */
-    private TaskInstance createTaskInstance(ProcessInstance processInstance, String nodeName,
-                                            TaskNode taskNode) {
-        //update processInstance for update the globalParams
-        this.processInstance = this.processService.findProcessInstanceById(this.processInstance.getId());
-        TaskInstance taskInstance = findTaskIfExists(nodeName);
+    private TaskInstance createTaskInstance(ProcessInstance processInstance, TaskNode taskNode) {
+        TaskInstance taskInstance = findTaskIfExists(taskNode.getCode(), taskNode.getVersion());
         if (taskInstance == null) {
             taskInstance = new TaskInstance();
+            taskInstance.setTaskCode(taskNode.getCode());
+            taskInstance.setTaskDefinitionVersion(taskNode.getVersion());
             // task name
-            taskInstance.setName(nodeName);
-            // process instance define id
-            taskInstance.setProcessDefinitionId(processInstance.getProcessDefinitionId());
+            taskInstance.setName(taskNode.getName());
             // task instance state
             taskInstance.setState(ExecutionStatus.SUBMITTED_SUCCESS);
             // process instance id
             taskInstance.setProcessInstanceId(processInstance.getId());
-            // task instance node json
-            taskInstance.setTaskJson(JSONUtils.toJsonString(taskNode));
             // task instance type
-            taskInstance.setTaskType(taskNode.getType());
+            taskInstance.setTaskType(taskNode.getType().toUpperCase());
             // task instance whether alert
             taskInstance.setAlertFlag(Flag.NO);
 
@@ -501,6 +498,9 @@ public class MasterExecThread implements Runnable {
             // retry task instance interval
             taskInstance.setRetryInterval(taskNode.getRetryInterval());
 
+            //set task param
+            taskInstance.setTaskParams(taskNode.getTaskParams());
+
             // task instance priority
             if (taskNode.getTaskInstancePriority() == null) {
                 taskInstance.setTaskInstancePriority(Priority.MEDIUM);
@@ -516,43 +516,64 @@ public class MasterExecThread implements Runnable {
             } else {
                 taskInstance.setWorkerGroup(taskWorkerGroup);
             }
-            //get process global
-            setProcessGlobal(taskNode, taskInstance);
             // delay execution time
             taskInstance.setDelayTime(taskNode.getDelayTime());
         }
+
         return taskInstance;
     }
 
-    private void setProcessGlobal(TaskNode taskNode, TaskInstance taskInstance) {
-        String globalParams = this.processInstance.getGlobalParams();
-        if (StringUtils.isNotEmpty(globalParams)) {
-            Map<String, String> globalMap = processService.getGlobalParamMap(globalParams);
-            if (globalMap != null && globalMap.size() != 0) {
-                setGlobalMapToTask(taskNode, taskInstance, globalMap);
+    public void getPreVarPool(TaskInstance taskInstance,  Set<String> preTask) {
+        Map<String,Property> allProperty = new HashMap<>();
+        Map<String,TaskInstance> allTaskInstance = new HashMap<>();
+        if (CollectionUtils.isNotEmpty(preTask)) {
+            for (String preTaskName : preTask) {
+                TaskInstance preTaskInstance = completeTaskList.get(preTaskName);
+                if (preTaskInstance == null) {
+                    continue;
+                }
+                String preVarPool = preTaskInstance.getVarPool();
+                if (StringUtils.isNotEmpty(preVarPool)) {
+                    List<Property> properties = JSONUtils.toList(preVarPool, Property.class);
+                    for (Property info : properties) {
+                        setVarPoolValue(allProperty, allTaskInstance, preTaskInstance, info);
+                    }
+                }
+            }
+            if (allProperty.size() > 0) {
+                taskInstance.setVarPool(JSONUtils.toJsonString(allProperty.values()));
             }
         }
     }
 
-    private void setGlobalMapToTask(TaskNode taskNode, TaskInstance taskInstance, Map<String, String> globalMap) {
-        // the param save in localParams
-        Map<String, Object> result = JSONUtils.toMap(taskNode.getParams(), String.class, Object.class);
-        Object localParams = result.get(LOCAL_PARAMS);
-        if (localParams != null) {
-            List<Property> allParam = JSONUtils.toList(JSONUtils.toJsonString(localParams), Property.class);
-            for (Property info : allParam) {
-                if (info.getDirect().equals(Direct.IN)) {
-                    String paramName = info.getProp();
-                    String value = globalMap.get(paramName);
-                    if (StringUtils.isNotEmpty(value)) {
-                        info.setValue(value);
-                    }
+    private void setVarPoolValue(Map<String, Property> allProperty, Map<String, TaskInstance> allTaskInstance, TaskInstance preTaskInstance, Property thisProperty) {
+        //for this taskInstance all the param in this part is IN.
+        thisProperty.setDirect(Direct.IN);
+        //get the pre taskInstance Property's name
+        String proName = thisProperty.getProp();
+        //if the Previous nodes have the Property of same name
+        if (allProperty.containsKey(proName)) {
+            //comparison the value of two Property
+            Property otherPro = allProperty.get(proName);
+            //if this property'value of loop is empty,use the other,whether the other's value is empty or not
+            if (StringUtils.isEmpty(thisProperty.getValue())) {
+                allProperty.put(proName, otherPro);
+                //if  property'value of loop is not empty,and the other's value is not empty too, use the earlier value
+            } else if (StringUtils.isNotEmpty(otherPro.getValue())) {
+                TaskInstance otherTask = allTaskInstance.get(proName);
+                if (otherTask.getEndTime().getTime() > preTaskInstance.getEndTime().getTime()) {
+                    allProperty.put(proName, thisProperty);
+                    allTaskInstance.put(proName,preTaskInstance);
+                } else {
+                    allProperty.put(proName, otherPro);
                 }
+            } else {
+                allProperty.put(proName, thisProperty);
+                allTaskInstance.put(proName,preTaskInstance);
             }
-            result.put(LOCAL_PARAMS, allParam);
-            taskNode.setParams(JSONUtils.toJsonString(result));
-            // task instance node json
-            taskInstance.setTaskJson(JSONUtils.toJsonString(taskNode));
+        } else {
+            allProperty.put(proName, thisProperty);
+            allTaskInstance.put(proName,preTaskInstance);
         }
     }
 
@@ -560,16 +581,8 @@ public class MasterExecThread implements Runnable {
         Set<String> submitTaskNodeList = DagHelper.parsePostNodes(parentNodeName, skipTaskNodeList, dag, completeTaskList);
         List<TaskInstance> taskInstances = new ArrayList<>();
         for (String taskNode : submitTaskNodeList) {
-            try {
-                VarPoolUtils.convertVarPoolToMap(propToValue, processInstance.getVarPool());
-            } catch (ParseException e) {
-                logger.error("parse {} exception", processInstance.getVarPool(), e);
-                throw new RuntimeException();
-            }
             TaskNode taskNodeObject = dag.getNode(taskNode);
-            VarPoolUtils.setTaskNodeLocalParams(taskNodeObject, propToValue);
-            taskInstances.add(createTaskInstance(processInstance, taskNode,
-                    taskNodeObject));
+            taskInstances.add(createTaskInstance(processInstance, taskNodeObject));
         }
 
         // if previous node success , post node submit
@@ -675,7 +688,7 @@ public class MasterExecThread implements Runnable {
     private ExecutionStatus runningState(ExecutionStatus state) {
         if (state == ExecutionStatus.READY_STOP
                 || state == ExecutionStatus.READY_PAUSE
-                || state == ExecutionStatus.WAITTING_THREAD
+                || state == ExecutionStatus.WAITING_THREAD
                 || state == ExecutionStatus.DELAY_EXECUTION) {
             // if the running task is not completed, the state remains unchanged
             return state;
@@ -723,7 +736,7 @@ public class MasterExecThread implements Runnable {
      * @return Boolean whether has waiting thread task
      */
     private boolean hasWaitingThreadTask() {
-        List<TaskInstance> waitingList = getCompleteTaskByState(ExecutionStatus.WAITTING_THREAD);
+        List<TaskInstance> waitingList = getCompleteTaskByState(ExecutionStatus.WAITING_THREAD);
         return CollectionUtils.isNotEmpty(waitingList);
     }
 
@@ -770,7 +783,7 @@ public class MasterExecThread implements Runnable {
 
         // waiting thread
         if (hasWaitingThreadTask()) {
-            return ExecutionStatus.WAITTING_THREAD;
+            return ExecutionStatus.WAITING_THREAD;
         }
 
         // pause
@@ -930,8 +943,9 @@ public class MasterExecThread implements Runnable {
 
             // send warning email if process time out.
             if (!sendTimeWarning && checkProcessTimeOut(processInstance)) {
-                alertManager.sendProcessTimeoutAlert(processInstance,
-                        processService.findProcessDefineById(processInstance.getProcessDefinitionId()));
+                processAlertManager.sendProcessTimeoutAlert(processInstance,
+                        processService.findProcessDefinition(processInstance.getProcessDefinitionCode(),
+                        processInstance.getProcessDefinitionVersion()));
                 sendTimeWarning = true;
             }
             for (Map.Entry<MasterBaseTaskExecThread, Future<Boolean>> entry : activeTaskNode.entrySet()) {
@@ -993,7 +1007,7 @@ public class MasterExecThread implements Runnable {
             }
             // send alert
             if (CollectionUtils.isNotEmpty(this.recoverToleranceFaultTaskList)) {
-                alertManager.sendAlertWorkerToleranceFault(processInstance, recoverToleranceFaultTaskList);
+                processAlertManager.sendAlertWorkerToleranceFault(processInstance, recoverToleranceFaultTaskList);
                 this.recoverToleranceFaultTaskList.clear();
             }
             // updateProcessInstance completed task status
@@ -1137,6 +1151,12 @@ public class MasterExecThread implements Runnable {
                         continue;
                     }
                 }
+                //init varPool only this task is the first time running
+                if (task.isFirstRun()) {
+                    //get pre task ,get all the task varPool to this task
+                    Set<String> preTask = dag.getPreviousNodes(task.getName());
+                    getPreVarPool(task, preTask);
+                }
                 DependResult dependResult = getDependResultForTask(task);
                 if (DependResult.SUCCESS == dependResult) {
                     if (retryTaskIntervalOverTime(task)) {
@@ -1243,17 +1263,17 @@ public class MasterExecThread implements Runnable {
     /**
      * generate flow dag
      *
-     * @param processDefinitionJson process definition json
-     * @param startNodeNameList     start node name list
-     * @param recoveryNodeNameList  recovery node name list
-     * @param depNodeType           depend node type
+     * @param totalTaskNodeList total task node list
+     * @param startNodeNameList start node name list
+     * @param recoveryNodeNameList recovery node name list
+     * @param depNodeType depend node type
      * @return ProcessDag           process dag
      * @throws Exception exception
      */
-    public ProcessDag generateFlowDag(String processDefinitionJson,
+    public ProcessDag generateFlowDag(List<TaskNode> totalTaskNodeList,
                                       List<String> startNodeNameList,
                                       List<String> recoveryNodeNameList,
                                       TaskDependType depNodeType) throws Exception {
-        return DagHelper.generateFlowDag(processDefinitionJson, startNodeNameList, recoveryNodeNameList, depNodeType);
+        return DagHelper.generateFlowDag(totalTaskNodeList, startNodeNameList, recoveryNodeNameList, depNodeType);
     }
 }

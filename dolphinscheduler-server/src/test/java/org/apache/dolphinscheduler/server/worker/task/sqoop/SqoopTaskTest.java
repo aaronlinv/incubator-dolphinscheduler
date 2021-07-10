@@ -25,7 +25,11 @@ import org.apache.dolphinscheduler.server.worker.task.sqoop.generator.SqoopJobGe
 import org.apache.dolphinscheduler.service.bean.SpringApplicationContext;
 import org.apache.dolphinscheduler.service.process.ProcessService;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.junit.Assert;
 import org.junit.Before;
@@ -36,7 +40,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
-
 
 /**
  * sqoop task test
@@ -199,6 +202,27 @@ public class SqoopTaskTest {
         } catch (Exception e) {
             Assert.fail(e.getMessage());
         }
+    }
+
+    @Test
+    public void testLogHandler() throws InterruptedException {
+        LinkedBlockingQueue<String> loggerBuffer = new LinkedBlockingQueue<>();
+        Thread thread1 = new Thread(() -> {
+            for (int i = 0; i < 10; i++) {
+                loggerBuffer.add("test add log");
+            }
+        });
+        Thread thread2 = new Thread(() -> {
+            for (int i = 0; i < 10; i++) {
+                sqoopTask.logHandle(loggerBuffer);
+            }
+        });
+        thread1.start();
+        thread2.start();
+        thread1.join();
+        thread2.join();
+        // if no exception throw, assert true
+        Assert.assertTrue(true);
     }
 
 }

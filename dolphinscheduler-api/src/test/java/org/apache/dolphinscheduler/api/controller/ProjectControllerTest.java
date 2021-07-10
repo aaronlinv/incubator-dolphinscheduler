@@ -73,7 +73,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), new TypeReference<Result<String>>() {});
-        Assert.assertEquals(Status.SUCCESS.getCode(), result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isSuccess());
         Assert.assertNotNull(result.getData());
         logger.info("create project return result:{}", mvcResult.getResponse().getContentAsString());
 
@@ -87,6 +87,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
         paramsMap.add("projectId", projectId);
         paramsMap.add("projectName","project_test_update");
         paramsMap.add("desc","the test project update");
+        paramsMap.add("userName", "the project owner");
 
         MvcResult mvcResult = mockMvc.perform(post("/projects/update")
                 .header(SESSION_ID, sessionId)
@@ -96,7 +97,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.SUCCESS.getCode(),result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isStatus(Status.USER_NOT_EXIST));
         logger.info("update project return result:{}", mvcResult.getResponse().getContentAsString());
 
     }
@@ -115,7 +116,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.SUCCESS.getCode(), result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isSuccess());
         logger.info(mvcResult.getResponse().getContentAsString());
         logger.info("query project by id :{}, return result:{}", projectId, mvcResult.getResponse().getContentAsString());
 
@@ -137,7 +138,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.SUCCESS.getCode(),result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isSuccess());
         logger.info("query list-paging project return result:{}", mvcResult.getResponse().getContentAsString());
     }
 
@@ -155,7 +156,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.SUCCESS.getCode(),result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isSuccess());
         logger.info("query unauth project return result:{}", mvcResult.getResponse().getContentAsString());
     }
 
@@ -173,7 +174,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.SUCCESS.getCode(),result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isSuccess());
         logger.info("query authed project return result:{}", mvcResult.getResponse().getContentAsString());
 
     }
@@ -191,7 +192,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.SUCCESS.getCode(),result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isSuccess());
         logger.info("query all project return result:{}", mvcResult.getResponse().getContentAsString());
 
     }
@@ -211,7 +212,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.IMPORT_PROCESS_DEFINE_ERROR.getCode(),result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isStatus(Status.IMPORT_PROCESS_DEFINE_ERROR));
         logger.info(mvcResult.getResponse().getContentAsString());
     }
 
@@ -228,7 +229,7 @@ public class ProjectControllerTest extends AbstractControllerTest {
                 .andReturn();
 
         Result result = JSONUtils.parseObject(mvcResult.getResponse().getContentAsString(), Result.class);
-        Assert.assertEquals(Status.SUCCESS.getCode(),result.getCode().intValue());
+        Assert.assertTrue(result != null && result.isSuccess());
         logger.info("delete project return result:{}", mvcResult.getResponse().getContentAsString());
     }
 
