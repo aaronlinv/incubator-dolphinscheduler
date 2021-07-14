@@ -17,7 +17,6 @@
 
 package org.apache.dolphinscheduler.server.worker.processor;
 
-import org.apache.dolphinscheduler.common.Constants;
 import org.apache.dolphinscheduler.common.enums.ExecutionStatus;
 import org.apache.dolphinscheduler.common.utils.JSONUtils;
 import org.apache.dolphinscheduler.common.utils.LoggerUtils;
@@ -136,7 +135,9 @@ public class TaskKillProcessor implements NettyRequestProcessor {
             logger.error("kill task error", e);
         }
         // find log and kill yarn job
-        Pair<Boolean, List<String>> yarnResult = killYarnJob(Host.of(taskExecutionContext.getHost()).getIp(),
+        Host host = Host.of(taskExecutionContext.getHost());
+        Pair<Boolean, List<String>> yarnResult = killYarnJob(host.getIp(),
+                host.getPort(),
                 taskExecutionContext.getLogPath(),
                 taskExecutionContext.getExecutePath(),
                 taskExecutionContext.getTenantCode());
@@ -173,10 +174,10 @@ public class TaskKillProcessor implements NettyRequestProcessor {
      * @param tenantCode tenantCode
      * @return Pair<Boolean, List < String>> yarn kill result
      */
-    private Pair<Boolean, List<String>> killYarnJob(String host, String logPath, String executePath, String tenantCode) {
+    private Pair<Boolean, List<String>> killYarnJob(String host, int port, String logPath, String executePath, String tenantCode) {
         try (LogClientService logClient = new LogClientService();) {
             logger.info("view log host : {},logPath : {}", host, logPath);
-            String log = logClient.viewLog(host, Constants.RPC_PORT, logPath);
+            String log = logClient.viewLog(host, port, logPath);
             List<String> appIds = Collections.emptyList();
             if (StringUtils.isNotEmpty(log)) {
                 appIds = LoggerUtils.getAppIds(log, logger);

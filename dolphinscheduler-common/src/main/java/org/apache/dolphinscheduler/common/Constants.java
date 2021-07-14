@@ -408,9 +408,9 @@ public final class Constants {
 
     /***
      *
-     * rpc port
+     * worker listener port 
      */
-    public static final int RPC_PORT = 50051;
+    public static final int RPC_PORT = 1234;
 
     /***
      * alert rpc port
